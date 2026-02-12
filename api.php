@@ -6,6 +6,7 @@ error_reporting(E_ALL);
 mysqli_report(MYSQLI_REPORT_OFF); // Matikan exception agar error bisa ditangkap manual
 
 
+// Ubah sesuai data di database Hosting
 $servername = "localhost"; 
 $username = "zakkalmy_water_drone"; 
 $password = "xvyhzmkZsr5fruZTnQsV"; 

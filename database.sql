@@ -9,3 +9,9 @@ CREATE TABLE IF NOT EXISTS drone_logs (
     udara DECIMAL(10, 2),        -- Air Quality/Temperature
     daya_listrik DECIMAL(10, 2)  -- Power/Battery Level
 );
+
+
+-- Jalankan di Query phpMyAdmin
+
+-- 1. Buat Database water_drone_db
+-- 2. Copy semua code yang ada di file ini lalu jalankan
