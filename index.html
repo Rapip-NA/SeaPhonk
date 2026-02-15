@@ -725,42 +725,34 @@
       }
 
       // ──────────────────────────────────────────
-      // DEMO DATA (for hour/day modes)
+      // HISTORY DATA (for hour/day modes)
       // ──────────────────────────────────────────
-      function getDemoData(mode) {
-        if (mode === "hour") {
+      // Menggunakan data history yang sama dari API.
+      // Pada mode hourly/daily, data tetap diambil dari
+      // history yang sudah di-fetch, ditampilkan apa adanya.
+      function getHistoryChartData(mode) {
+        // Filter out null values for display
+        const validPH = phHistory.filter((v) => v !== null);
+        const validTurb = turbidityHistory.filter((v) => v !== null);
+        const validSuhu = suhuHistory.filter((v) => v !== null);
+        const validLabels = labelHistory.filter((v) => v !== "");
+
+        if (validPH.length === 0) {
+          // Belum ada data dari API, tampilkan empty
           return {
-            labels: [
-              "00",
-              "05",
-              "10",
-              "15",
-              "20",
-              "25",
-              "30",
-              "35",
-              "40",
-              "45",
-              "50",
-              "55",
-            ],
-            ph: [7.1, 7.0, 6.9, 7.2, 7.3, 7.1, 6.8, 7.0, 7.2, 7.4, 7.1, 7.0],
-            turbidity: [
-              120, 135, 145, 130, 110, 100, 125, 140, 115, 105, 130, 120,
-            ],
-            suhu: [
-              24.5, 24.8, 25.0, 25.2, 25.1, 24.9, 24.7, 25.0, 25.3, 25.5, 25.2,
-              25.0,
-            ],
-          };
-        } else {
-          return {
-            labels: ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"],
-            ph: [7.0, 6.8, 7.1, 7.3, 6.9, 7.2, 7.0],
-            turbidity: [150, 180, 130, 100, 160, 140, 120],
-            suhu: [24.0, 24.5, 25.0, 25.5, 25.0, 24.5, 24.0],
+            labels: ["No data"],
+            ph: [null],
+            turbidity: [null],
+            suhu: [null],
           };
         }
+
+        return {
+          labels: validLabels,
+          ph: validPH,
+          turbidity: validTurb,
+          suhu: validSuhu,
+        };
       }
 
       // ──────────────────────────────────────────
@@ -808,11 +800,13 @@
           turbData = turbidityHistory.map((v) => (v !== null ? v / 100 : null)); // Scale down for visual
           suhuData = suhuHistory;
         } else {
-          const demo = getDemoData(currentMode);
-          labels = demo.labels;
-          phData = demo.ph;
-          turbData = demo.turbidity.map((v) => v / 100); // Scale for visual
-          suhuData = demo.suhu;
+          const histData = getHistoryChartData(currentMode);
+          labels = histData.labels;
+          phData = histData.ph;
+          turbData = histData.turbidity.map((v) =>
+            v !== null ? v / 100 : null,
+          ); // Scale for visual
+          suhuData = histData.suhu;
         }
 
         chartMain = new Chart(ctxMain, {
@@ -988,133 +982,213 @@
       }
 
       // ──────────────────────────────────────────
-      // 🎲 DUMMY DATA GENERATOR (Simulasi Sensor)
+      // 🌐 API - Fetch Data dari Wokwi via Server
       // ──────────────────────────────────────────
-      // Menggunakan "random walk" agar nilai berubah
-      // secara halus dan realistis (tidak loncat-loncat).
-      //
-      // 🔄 Untuk beralih ke API sungguhan, ganti
-      //    fungsi generateDummyData() dengan fetchLatestData()
-      //    dan uncomment bagian API_URL di bawah.
+      // Data sensor dikirim oleh ESP32 (Wokwi) ke api.php
+      // Dashboard mengambil data terbaru dari API
       // ──────────────────────────────────────────
 
       const API_URL = "https://seaphonk.underwaterdrone.my.id/api.php";
+      let lastDataId = null; // Track ID terakhir agar tidak duplikat
+      let consecutiveErrors = 0; // Hitung error berturut-turut
+      const MAX_ERRORS_OFFLINE = 3; // Setelah 3x error → status offline
 
-      // ── Nilai awal simulasi ──
-      let dummyPH = 7.0; // pH netral (rentang realistis: 6.5–8.5)
-      let dummyTurbidity = 120; // NTU sedang (rentang simulasi: 20–350)
-      let dummySuhu = 26.0; // Suhu hangat (rentang simulasi: 22–30°C)
-
-      // ── Helper: random walk dengan batas min/max ──
-      function randomWalk(current, step, min, max) {
-        const delta = (Math.random() - 0.5) * 2 * step;
-        let next = current + delta;
-        // Batasi dalam rentang valid
-        if (next < min) next = min + Math.random() * step;
-        if (next > max) next = max - Math.random() * step;
-        return next;
-      }
-
-      // ── Simulasi event sesekali (anomali) ──
-      function maybeAnomaly() {
-        const chance = Math.random();
-        if (chance < 0.03) {
-          // 3% kemungkinan anomali pH
-          dummyPH =
-            Math.random() < 0.5
-              ? 5.2 + Math.random() * 1.0
-              : 9.0 + Math.random() * 1.5;
-          return "⚠️ Anomali pH terdeteksi! Kemungkinan kontaminasi.";
-        }
-        if (chance < 0.05) {
-          // 2% kemungkinan turbidity spike
-          dummyTurbidity = 300 + Math.random() * 200;
-          return "⚠️ Lonjakan kekeruhan! Kemungkinan sedimen terganggu.";
-        }
-        return null;
-      }
-
-      function fetchLatestData() {
-        // Cek anomali dulu
-        const anomalyMsg = maybeAnomaly();
-        if (anomalyMsg) {
-          addLog("WARN", anomalyMsg);
-        }
-
-        // Random walk untuk setiap sensor
-        dummyPH = randomWalk(dummyPH, 0.15, 4.0, 10.0);
-        dummyTurbidity = randomWalk(dummyTurbidity, 15, 5, 600);
-        dummySuhu = randomWalk(dummySuhu, 0.3, 18, 35);
-
-        // Tarik kembali ke rentang "normal" secara perlahan (mean reversion)
-        dummyPH += (7.0 - dummyPH) * 0.05;
-        dummyTurbidity += (120 - dummyTurbidity) * 0.03;
-        dummySuhu += (26.0 - dummySuhu) * 0.04;
-
-        const ph = parseFloat(dummyPH.toFixed(2));
-        const turbidity = parseFloat(dummyTurbidity.toFixed(1));
-        const suhu = parseFloat(dummySuhu.toFixed(1));
-
-        totalReadings++;
-
-        // ── Update metric cards ──
-        document.getElementById("val-ph").innerText = ph.toFixed(2);
-        applyStatusBadge("status-ph", getPhStatus(ph));
-
-        document.getElementById("val-turbidity").innerText =
-          turbidity.toFixed(0);
-        applyStatusBadge("status-turbidity", getTurbidityStatus(turbidity));
-
-        document.getElementById("val-suhu").innerText = suhu.toFixed(1);
-        applyStatusBadge("status-suhu", getSuhuStatus(suhu));
-
-        // ── Update drone status ──
-        document.getElementById("val-drone-status").innerText = "ACTIVE";
-        document.getElementById("val-drone-status").className =
-          "text-3xl font-bold dark:text-green-400 text-green-600 tracking-tight transition-all";
-        document.getElementById("val-readings").innerText = totalReadings;
-
-        // ── Update connection badge ──
-        const badge = document.getElementById("connection-badge");
-        badge.className =
-          "status-badge dark:bg-cyan-500/10 dark:text-cyan-400 bg-cyan-100 text-cyan-700 border dark:border-cyan-500/20 border-cyan-200 hidden md:inline-flex";
-        badge.innerHTML =
-          '<span class="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-pulse"></span> Dummy Mode';
-
-        // ── Update live chart ──
-        if (currentMode === "minute" && chartMain) {
-          const now = new Date();
-          const timeLabel = now.toLocaleTimeString("en-US", {
-            hour12: false,
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-          });
-
-          phHistory.shift();
-          phHistory.push(ph);
-          turbidityHistory.shift();
-          turbidityHistory.push(turbidity);
-          suhuHistory.shift();
-          suhuHistory.push(suhu);
-          labelHistory.shift();
-          labelHistory.push(timeLabel);
-
-          // Scale turbidity for chart (/100 agar skala sejajar pH & Suhu)
-          chartMain.data.datasets[0].data = [...phHistory];
-          chartMain.data.datasets[1].data = turbidityHistory.map((v) =>
-            v !== null ? v / 100 : null,
+      // ── Fetch data terbaru dari API ──
+      async function fetchLatestData() {
+        try {
+          const response = await fetch(
+            `${API_URL}?get_latest=true&_t=${Date.now()}`,
           );
-          chartMain.data.datasets[2].data = [...suhuHistory];
-          chartMain.data.labels = [...labelHistory];
-          chartMain.update("none");
-        }
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-        // ── Add log entry ──
-        addLog(
-          "DATA",
-          `pH: <b>${ph.toFixed(2)}</b> • Turb: <b>${turbidity.toFixed(0)} NTU</b> • Suhu: <b>${suhu.toFixed(1)}°C</b>`,
-        );
+          const data = await response.json();
+          consecutiveErrors = 0; // Reset error counter
+
+          // Cek apakah data kosong (belum ada data dari ESP32)
+          if (data.status === "empty") {
+            updateConnectionBadge("waiting");
+            addLog("INFO", "Menunggu data dari drone ESP32 (Wokwi)...");
+            return;
+          }
+
+          // Cek apakah data baru (ID berbeda)
+          if (data.id && data.id === lastDataId) {
+            // Data belum berubah, skip update
+            return;
+          }
+          lastDataId = data.id;
+
+          // Parse data dari API
+          // Mapping: kualitas_air=pH, tahan=Turbidity(NTU), udara=Suhu(°C)
+          const ph = parseFloat(data.kualitas_air) || 0;
+          const turbidity = parseFloat(data.tahan) || 0;
+          const suhu = parseFloat(data.udara) || 0;
+
+          totalReadings++;
+
+          // ── Update metric cards ──
+          document.getElementById("val-ph").innerText = ph.toFixed(2);
+          applyStatusBadge("status-ph", getPhStatus(ph));
+
+          document.getElementById("val-turbidity").innerText =
+            turbidity.toFixed(0);
+          applyStatusBadge("status-turbidity", getTurbidityStatus(turbidity));
+
+          document.getElementById("val-suhu").innerText = suhu.toFixed(1);
+          applyStatusBadge("status-suhu", getSuhuStatus(suhu));
+
+          // ── Update drone status ──
+          document.getElementById("val-drone-status").innerText = "ACTIVE";
+          document.getElementById("val-drone-status").className =
+            "text-3xl font-bold dark:text-green-400 text-green-600 tracking-tight transition-all";
+          document.getElementById("val-readings").innerText = totalReadings;
+
+          // ── Update connection badge ──
+          updateConnectionBadge("connected");
+
+          // ── Update live chart ──
+          if (currentMode === "minute" && chartMain) {
+            const timeLabel = data.timestamp
+              ? new Date(data.timestamp).toLocaleTimeString("en-US", {
+                  hour12: false,
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  second: "2-digit",
+                })
+              : new Date().toLocaleTimeString("en-US", {
+                  hour12: false,
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  second: "2-digit",
+                });
+
+            phHistory.shift();
+            phHistory.push(ph);
+            turbidityHistory.shift();
+            turbidityHistory.push(turbidity);
+            suhuHistory.shift();
+            suhuHistory.push(suhu);
+            labelHistory.shift();
+            labelHistory.push(timeLabel);
+
+            // Scale turbidity for chart (/100 agar skala sejajar pH & Suhu)
+            chartMain.data.datasets[0].data = [...phHistory];
+            chartMain.data.datasets[1].data = turbidityHistory.map((v) =>
+              v !== null ? v / 100 : null,
+            );
+            chartMain.data.datasets[2].data = [...suhuHistory];
+            chartMain.data.labels = [...labelHistory];
+            chartMain.update("none");
+          }
+
+          // ── Add log entry ──
+          addLog(
+            "DATA",
+            `pH: <b>${ph.toFixed(2)}</b> • Turb: <b>${turbidity.toFixed(0)} NTU</b> • Suhu: <b>${suhu.toFixed(1)}°C</b>`,
+          );
+        } catch (error) {
+          consecutiveErrors++;
+          console.error("Fetch error:", error);
+
+          if (consecutiveErrors >= MAX_ERRORS_OFFLINE) {
+            updateConnectionBadge("offline");
+            document.getElementById("val-drone-status").innerText = "OFFLINE";
+            document.getElementById("val-drone-status").className =
+              "text-3xl font-bold dark:text-red-400 text-red-600 tracking-tight transition-all";
+          }
+
+          if (consecutiveErrors === 1 || consecutiveErrors % 5 === 0) {
+            addLog("ERROR", `Gagal mengambil data: ${error.message}`);
+          }
+        }
+      }
+
+      // ── Fetch history data dari API (untuk chart) ──
+      async function fetchHistoryData() {
+        try {
+          const response = await fetch(
+            `${API_URL}?get_history=true&limit=20&_t=${Date.now()}`,
+          );
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+          const result = await response.json();
+
+          if (
+            result.status === "success" &&
+            result.data &&
+            result.data.length > 0
+          ) {
+            // Reset histories
+            phHistory = Array(MAX_CHART_POINTS).fill(null);
+            turbidityHistory = Array(MAX_CHART_POINTS).fill(null);
+            suhuHistory = Array(MAX_CHART_POINTS).fill(null);
+            labelHistory = Array(MAX_CHART_POINTS).fill("");
+
+            // Fill dari data API (data sudah diurutkan oldest first)
+            const startIdx = Math.max(0, MAX_CHART_POINTS - result.data.length);
+            result.data.forEach((row, i) => {
+              const idx = startIdx + i;
+              if (idx < MAX_CHART_POINTS) {
+                phHistory[idx] = parseFloat(row.kualitas_air) || null;
+                turbidityHistory[idx] = parseFloat(row.tahan) || null;
+                suhuHistory[idx] = parseFloat(row.udara) || null;
+                labelHistory[idx] = row.timestamp
+                  ? new Date(row.timestamp).toLocaleTimeString("en-US", {
+                      hour12: false,
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                    })
+                  : "";
+              }
+            });
+
+            renderChart();
+            addLog(
+              "SUCCESS",
+              `Loaded ${result.data.length} data points dari server`,
+            );
+          }
+        } catch (error) {
+          console.error("History fetch error:", error);
+          addLog("WARN", "Tidak bisa memuat data history dari server");
+        }
+      }
+
+      // ── Update connection badge UI ──
+      function updateConnectionBadge(status) {
+        const badge = document.getElementById("connection-badge");
+        const statusDot = document.getElementById("status-dot");
+        const statusText = document.getElementById("status-text");
+
+        switch (status) {
+          case "connected":
+            badge.className =
+              "status-badge dark:bg-green-500/10 dark:text-green-400 bg-green-100 text-green-700 border dark:border-green-500/20 border-green-200 hidden md:inline-flex";
+            badge.innerHTML =
+              '<span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Wokwi Live';
+            statusDot.className =
+              "w-2 h-2 bg-green-500 rounded-full animate-pulse";
+            statusText.innerText = "DRONE ONLINE";
+            break;
+          case "waiting":
+            badge.className =
+              "status-badge dark:bg-amber-500/10 dark:text-amber-400 bg-amber-100 text-amber-700 border dark:border-amber-500/20 border-amber-200 hidden md:inline-flex";
+            badge.innerHTML =
+              '<span class="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse"></span> Waiting...';
+            statusDot.className =
+              "w-2 h-2 bg-amber-400 rounded-full animate-pulse";
+            statusText.innerText = "WAITING FOR DRONE";
+            break;
+          case "offline":
+            badge.className =
+              "status-badge dark:bg-red-500/10 dark:text-red-400 bg-red-100 text-red-700 border dark:border-red-500/20 border-red-200 hidden md:inline-flex";
+            badge.innerHTML =
+              '<span class="w-1.5 h-1.5 bg-red-500 rounded-full"></span> Offline';
+            statusDot.className = "w-2 h-2 bg-red-500 rounded-full";
+            statusText.innerText = "DRONE OFFLINE";
+            break;
+        }
       }
 
       // ──────────────────────────────────────────
@@ -1125,53 +1199,18 @@
         setMode("minute");
 
         addLog("INFO", "SeaPhonk Dashboard initialized");
-        addLog("INFO", "🎲 Mode: <b>Dummy Data</b> (simulasi sensor)");
-        addLog("SUCCESS", "Drone simulation started successfully!");
+        addLog("INFO", "🌐 Mode: <b>Wokwi Live</b> (data dari simulasi ESP32)");
+        addLog("INFO", `📡 API: <b>${API_URL}</b>`);
 
-        // ── Pre-fill chart dengan data awal (isi 20 titik awal) ──
-        for (let i = 0; i < MAX_CHART_POINTS; i++) {
-          dummyPH = randomWalk(dummyPH, 0.12, 5.5, 8.5);
-          dummyTurbidity = randomWalk(dummyTurbidity, 12, 20, 300);
-          dummySuhu = randomWalk(dummySuhu, 0.25, 22, 30);
+        // ── Load history data untuk chart awal ──
+        fetchHistoryData();
 
-          dummyPH += (7.0 - dummyPH) * 0.05;
-          dummyTurbidity += (120 - dummyTurbidity) * 0.03;
-          dummySuhu += (26.0 - dummySuhu) * 0.04;
-
-          phHistory[i] = parseFloat(dummyPH.toFixed(2));
-          turbidityHistory[i] = parseFloat(dummyTurbidity.toFixed(1));
-          suhuHistory[i] = parseFloat(dummySuhu.toFixed(1));
-
-          const past = new Date(Date.now() - (MAX_CHART_POINTS - i) * 2000);
-          labelHistory[i] = past.toLocaleTimeString("en-US", {
-            hour12: false,
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-          });
-        }
-
-        // Render chart pertama kali dengan data pre-fill
+        // ── Render chart kosong dulu ──
         renderChart();
 
-        // Update nilai kartu awal
-        const lastPH = phHistory[phHistory.length - 1];
-        const lastTurb = turbidityHistory[turbidityHistory.length - 1];
-        const lastSuhu = suhuHistory[suhuHistory.length - 1];
-
-        document.getElementById("val-ph").innerText = lastPH.toFixed(2);
-        applyStatusBadge("status-ph", getPhStatus(lastPH));
-        document.getElementById("val-turbidity").innerText =
-          lastTurb.toFixed(0);
-        applyStatusBadge("status-turbidity", getTurbidityStatus(lastTurb));
-        document.getElementById("val-suhu").innerText = lastSuhu.toFixed(1);
-        applyStatusBadge("status-suhu", getSuhuStatus(lastSuhu));
-        document.getElementById("val-drone-status").innerText = "ACTIVE";
-        document.getElementById("val-drone-status").className =
-          "text-3xl font-bold dark:text-green-400 text-green-600 tracking-tight transition-all";
-
-        // Mulai generate dummy data setiap 2 detik
-        setInterval(generateDummyData, 2000);
+        // ── Mulai polling data dari API setiap 5 detik ──
+        fetchLatestData(); // Fetch pertama kali segera
+        setInterval(fetchLatestData, 5000);
 
         // Update uptime setiap detik
         setInterval(() => {
