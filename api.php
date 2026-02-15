@@ -19,7 +19,7 @@ mysqli_report(MYSQLI_REPORT_OFF);
 // Database Configuration
 $servername = "localhost"; 
 $username = "underwat_seaphonk"; 
-$password = "n5X4FBZbvtQ7EHN2pY3D"; 
+$password = "YPUXnmZjyH8LSamBvcrp"; 
 $dbname = "underwat_seaphonk"; 
 
 // Connect to database
