@@ -22,7 +22,5 @@ jobs:
             **/.git*
             **/.git*/**
             **/node_modules/**
-            **/database.sql
             **/diagram.json
-            **/drone_sketch.ino
             **.env
